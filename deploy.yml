@@ -1,0 +1,119 @@
+---
+- hosts: aws_ec2
+  gather_facts: no
+  become: yes
+  remote_user: ec2-user
+
+  vars_files:
+    - awsconfig.yml
+    - vars.yml
+
+  vars:
+    rds_info: "{{ lookup('file', 'JSON/out.rds.create.json') | from_json }}"
+    db_url: "{{ rds_info | json_query('endpoint.address') }}"
+
+  tasks:
+    - name: Install php and other dependencies
+      dnf:
+        name:
+          - git
+          - php
+          - php-fpm
+          - php-gd
+          - php-mysqlnd
+          - nginx
+        state: present
+
+    - name: Download Composer installer.
+      get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-installer.php
+        mode: 0755
+
+    - name: Install composer
+      command: 
+        cmd: php composer-installer.php
+        chdir: /tmp
+        creates: /tmp/composer.phar
+
+    - name: Move composer to a globally accessible directory
+      command:
+        cmd: mv /tmp/composer.phar /usr/local/bin/composer
+        creates: /usr/local/bin/composer
+
+    - name: Ensure drupal directory exists
+      file:
+        path: "{{ drupal_site_path }}"
+        state: directory
+
+    - name: Check if drupal project already exists
+      stat:
+        path: "{{ drupal_site_path }}/composer.json"
+      register: drupal_composer_json
+
+    - name: Create drupal project
+      composer:
+        command: create-project
+        arguments: drupal/recommended-project /var/www/drupal-site
+        working_dir: "{{ drupal_site_path }}"
+        no_dev: true
+      when: not drupal_composer_json.stat.exists
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: 1
+
+    - name: Install GA4, sitemap and drush
+      composer:
+        command: require
+        arguments: drupal/sitemap:^2.0@beta drush/drush drupal/ga4_google_analytics:^1.1
+        working_dir: "{{ drupal_site_path }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: 1
+
+    - name: Install Drupal
+      command: >
+          vendor/bin/drush si -y
+          --site-name="{{ site_name }}"
+          --site-pass={{ site_pass }}
+          --site-mail={{ site_mail }}
+          --account-name={{ account_name }}
+          --account-mail={{ account_mail }}
+          --account-pass={{ account_pass }}
+          --db-url=mysql://{{ username }}:{{ password }}@{{ db_url }}/{{ db_name }}
+          chdir={{ drupal_site_path }}
+
+    - name: Disable CSS aggregation in drupal
+      lineinfile:
+        path: "{{ drupal_site_path }}/web/sites/default/settings.php"
+        line: $config['system.performance']['css']['preprocess'] = FALSE;
+
+    - name: Add sites-enabled to nginx.conf
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        insertafter: '^    include /etc/nginx/conf.d/\*.conf;$'
+        line: '    include /etc/nginx/sites-enabled/*.conf;'
+        
+    - name: Ensure sites-enabled folder is present
+      file:
+        path: /etc/nginx/sites-enabled
+        state: directory
+
+    - name: Add nginx config
+      template:
+        src: ./templates/drupal.conf.j2
+        dest: /etc/nginx/sites-enabled/drupal.conf
+
+    - name: Replace listen directive in PHP-FPM config
+      lineinfile:
+        path: /etc/php-fpm.d/www.conf
+        regexp: '^listen = /run/php-fpm/www.sock$'
+        line: 'listen = 127.0.0.1:9000'
+
+    - name: Start nginx 
+      systemd_service:
+        name: php-fpm.service
+        state: reloaded
+
+    - name: Start nginx 
+      systemd_service:
+        name: nginx.service
+        state: reloaded

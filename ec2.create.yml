@@ -1,0 +1,23 @@
+---
+- hosts: localhost
+  connection: local
+
+  vars_files:
+      - awsconfig.yml
+
+  tasks:
+    - name: Create and start an EC2 instance
+      amazon.aws.ec2_instance:
+        name: "drupal"
+        key_name: "{{ key_name }}"
+        instance_type: "{{ instance_type }}"
+        region: "{{ aws_region }}"
+        security_group: "{{ ec2_sec_grp }}"
+        network:
+          assign_public_ip: true
+        access_key: "{{ aws_access_key_id }}"
+        secret_key: "{{ aws_secret_access_key }}"
+        image_id: "{{ aws_ami }}"
+        state: "running"
+        tags:
+          Projects: drupal

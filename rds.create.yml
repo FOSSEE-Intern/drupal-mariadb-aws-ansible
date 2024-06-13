@@ -1,0 +1,29 @@
+---
+- hosts: localhost
+  connection: local
+
+  vars_files:
+      - awsconfig.yml
+
+  tasks:
+    - name: Create and start a DB instance in RDS
+      amazon.aws.rds_instance:
+        engine: "{{ engine}}"
+        db_instance_identifier: "{{ db_identifier }}"
+        db_instance_class: "{{ instance_class}}"
+        allocated_storage: "{{ storage }}"
+        publicly_accessible: false
+        storage_encrypted: true
+        vpc_security_group_ids: "{{ rds_sec_grp }}"
+        state: running
+
+        master_username: "{{ username }}"
+        master_user_password: "{{ password }}"
+        db_name: "{{ db_name }}"
+      register: rds_info
+
+    - name: Put RDS information into file
+      ansible.builtin.copy:
+        content: "{{ rds_info }}"
+        dest: JSON/out.rds.create.json
+      delegate_to: localhost
