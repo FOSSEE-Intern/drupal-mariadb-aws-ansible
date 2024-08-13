@@ -15,10 +15,12 @@
 - Payload URL: `http://<jenkins_urls>/github-webhook`
 
 ## Ansible playbooks:
-- There are two playbooks here:
+- There are three playbooks here:
     - ec2.create.yml
+    - rds.create.yml
     - deploy.yml
-- ec2.create.yml: creates an ec2 for the website to be deployed
+- ec2.create.yml: creates an EC2 instance for the website to be deployed.
+- rds.create.yml: creates a RDS instance for the EC2 instance.
 - deploy.yml:
     - This ensures the dependencies like php, php-fpm, php-gd, php-mysqlnd, nginx and git are installed on the system.
     - Installs composer on the system.
